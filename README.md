@@ -1,231 +1,212 @@
-# nanoVLM
+# nanoVLM - Zero-shot Object Detection 🎯
 
-![nanoVLM](assets/nanoVLM.png)
+**nanoVLM**는 최소한의 코드로 구현된 경량 Zero-shot Object Detection 모델입니다. Vision-Language 이해와 YOLO 스타일의 객체 탐지를 결합하여, 자연어 설명을 통한 zero-shot 객체 탐지를 수행할 수 있습니다.
 
-<a target="_blank" href="https://colab.research.google.com/github/huggingface/nanoVLM/blob/main/nanoVLM.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-</a>
+## 🌟 주요 특징
+
+- **Zero-shot Object Detection**: 자연어 프롬프트를 통한 객체 탐지
+- **YOLO 스타일 아키텍처**: 다중 스케일 detection heads
+- **Vision-Language 통합**: ViT encoder + Language Model + Detection Head
+- **경량 설계**: 순수 PyTorch로 구현된 간단한 아키텍처
+- **유연한 Loss 함수**: YOLO Loss, Focal Loss, DIoU Loss 지원
+
+## 🏗️ 모델 구조
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   ViT Encoder   │───►│ Modality Projector│───►│ Language Model  │
+│  (SigLIP-Base)  │    │                  │    │  (SmolLM2-135M) │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                                               │
+         ▼                                               ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Region Model    │◄───│ Text Embeddings  │    │ Text Generation │
+│ (YOLO-style)    │    │                  │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│   Detections    │
+│ (Boxes, Classes)│
+└─────────────────┘
+```
+
+## 🚀 빠른 시작
+
+### 설치
+
+```bash
+pip install torch torchvision transformers safetensors huggingface_hub pillow
+```
+
+### 기본 사용법
+
+```python
+from models.vision_language_model import VisionLanguageDetectionModel
+from models.config import VLMConfig
+import torch
+from PIL import Image
+from transformers import AutoTokenizer
+
+# 모델 설정
+cfg = VLMConfig()
+model = VisionLanguageDetectionModel(cfg, load_backbone=False)
+tokenizer = AutoTokenizer.from_pretrained(cfg.lm_tokenizer)
+
+# 이미지 로드
+image = torch.randn(1, 3, 224, 224)  # 실제로는 실제 이미지 사용
+
+# Zero-shot Object Detection
+prompt = "Find all cats and dogs in this image"
+input_ids = tokenizer(prompt, return_tensors='pt')['input_ids']
+
+with torch.no_grad():
+    boxes, scores, classes = model.detect_objects(input_ids, image)
+
+print(f"탐지된 객체 수: {len(boxes[0])}")
+```
+
+### 텍스트 생성 + 객체 탐지
+
+```python
+# 텍스트 생성과 동시에 객체 탐지
+prompt = "Describe what you see:"
+input_ids = tokenizer(prompt, return_tensors='pt')['input_ids']
+
+with torch.no_grad():
+    generated_tokens, detections = model.generate_with_detection(
+        input_ids, image, max_new_tokens=50, return_detections=True
+    )
+
+# 결과 확인
+generated_text = tokenizer.decode(generated_tokens[0], skip_special_tokens=True)
+print(f"생성된 텍스트: {generated_text}")
+print(f"탐지된 객체 수: {len(detections['boxes'][0])}")
+```
+
+## 📊 모델 설정
+
+주요 설정 옵션들:
+
+```python
+from models.config import VLMConfig
+
+cfg = VLMConfig()
+
+# Detection 관련 설정
+cfg.detection_num_classes = 80        # COCO 클래스 수
+cfg.detection_num_anchors = 3         # 앵커 박스 수
+cfg.detection_grid_sizes = (7, 14, 28)  # 다중 스케일 grid
+cfg.detection_conf_threshold = 0.5    # Confidence threshold
+cfg.detection_nms_threshold = 0.4     # NMS threshold
+cfg.detection_use_language_grounding = True  # 언어 기반 grounding
+```
+
+## 🎯 Loss 함수
+
+다양한 detection loss 함수를 지원합니다:
+
+```python
+from models.detection_losses import DetectionLossManager
+
+loss_manager = DetectionLossManager(cfg)
+
+# YOLO Loss
+yolo_loss = loss_manager.compute_total_loss(predictions, targets, 'yolo')
+
+# Focal Loss (클래스 불균형 해결)
+focal_loss = loss_manager.compute_total_loss(predictions, targets, 'focal')
+
+# 조합된 Loss
+combined_loss = loss_manager.compute_total_loss(predictions, targets, 'combined')
+```
+
+## 📝 예제 실행
+
+완전한 예제를 실행해보세요:
+
+```bash
+python example_detection.py
+```
+
+이 스크립트는 다음을 포함합니다:
+
+- Zero-shot object detection 예제들
+- 텍스트 생성과 동시 객체 탐지
+- 모델 정보 출력
+
+## 🔧 커스터마이징
+
+### 새로운 Detection Head 추가
+
+```python
+from models.region_model import YOLODetectionHead
+
+# 커스텀 detection head
+class CustomDetectionHead(nn.Module):
+    def __init__(self, in_channels, num_classes, num_anchors):
+        super().__init__()
+        # 여기에 커스텀 구현
+        pass
+```
+
+### 손실 함수 커스터마이징
+
+```python
+from models.detection_losses import YOLOLoss
+
+class CustomLoss(YOLOLoss):
+    def forward(self, predictions, targets):
+        # 커스텀 loss 로직
+        return custom_loss
+```
+
+## 🎨 Zero-shot Detection 예제들
+
+```python
+# 다양한 Zero-shot 프롬프트들
+prompts = [
+    "Find all cats and dogs",
+    "Detect cars and motorcycles",
+    "Locate people in the scene",
+    "Find furniture like chairs and tables",
+    "Detect electronic devices"
+]
+
+for prompt in prompts:
+    boxes, scores, classes = model.detect_objects(
+        tokenizer(prompt, return_tensors='pt')['input_ids'],
+        image
+    )
+    print(f"{prompt}: {len(boxes[0])} objects detected")
+```
+
+## 📈 성능 최적화
+
+- **Batch Processing**: 여러 이미지 동시 처리
+- **Mixed Precision**: torch.cuda.amp 사용
+- **Model Compilation**: torch.compile() 적용
+- **KV Cache**: 텍스트 생성 시 캐시 활용
+
+## 🤝 기여하기
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 라이선스
+
+이 프로젝트는 MIT 라이선스 하에 있습니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+
+## 🙏 감사의 말
+
+- **HuggingFace**: 기본 VLM 아키텍처
+- **SigLIP**: Vision encoder
+- **SmolLM2**: Language model
+- **YOLO**: Detection 아키텍처 영감
 
 ---
 
-> [!TIP]
-> We have written a [tutorial on nanoVLM](https://huggingface.co/blog/nanovlm) which will guide you through the repository and help you get started in no time.
-
----
-
-nanoVLM is the simplest repository for training/finetuning a small sized Vision-Language Model with a lightweight implementation in pure PyTorch. The code itself is very readable and approachable, the model consists of a Vision Backbone (`models/vision_transformer.py` ~150 lines), Language Decoder (`models/language_model.py` ~250 lines), Modality Projection (`models/modality_projection.py` ~50 lines) and the VLM itself (`models/vision_language_model.py` ~100 lines) and a simple training loop (`train.py` ~200 lines).
-
-Similar to Andrej Karpathy's nanoGPT, we wanted to equip the community with a very simple implementation and training script for Vision Language Models. We do not claim this to be a new SOTA model, rather an educational effort that packs quite a bit of punch if you have the right hardware! You should be able to tweak and play around with the code in no time.
-
-
-## What can nanoVLM do?
-
-The model definition and training logic of this repository fits in ~750 lines, with some more boilerplate logging and parameter loading. 
-Using the [`SigLIP-B/16-224-85M`](https://huggingface.co/google/siglip-base-patch16-224) and [`HuggingFaceTB/SmolLM2-135M`](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) as backbones results in a **222M** nanoVLM. Training this for ~6h on a single H100 GPU on ~1.7M samples of [the cauldron](https://huggingface.co/datasets/HuggingFaceM4/the_cauldron) results in an accuracy of 35.3% on MMStar.
-
-![loss](assets/nanoVLM-222M-loss.png)
-
-It is therefore a simple yet powerful platform to get started with VLMs. Perfect to tinker around with different setups and settings, to explore the capabilities and efficiencies of small VLMs!
-
-## Quick Start
-
-You can either clone the repository, setup an environment and start with the scripts, or directly [open in Colab](https://colab.research.google.com/github/huggingface/nanoVLM/blob/main/nanoVLM.ipynb). You can also use the [interactive notebook](./nanoVLM.ipynb) to get started!
-
-
-## Environment Setup
-
-We really like `uv` and recommend using it as your package manager. But feel free to use whichever you prefer.
-
-Let's first clone the repository:
-```bash
-git clone https://github.com/huggingface/nanoVLM.git
-cd nanoVLM
-```
-
-If you want to use `uv`:
-```bash
-uv init --bare --python 3.12
-uv sync --python 3.12
-source .venv/bin/activate
-uv add torch numpy torchvision pillow datasets huggingface-hub transformers wandb
-```
-
-If you prefer another environment manager, simply install these packages:  
-```bash
-pip install torch numpy torchvision pillow datasets huggingface-hub transformers wandb
-```
-Dependencies: 
-- `torch` <3
-- `numpy` <3
-- `torchvision` for the image processors
-- `pillow` for image loading
-- `datasets` for the training datasets
-- `huggingface-hub` & `transformers` to load the pretrained backbones
-- `wandb` for logging
-
-## Training
-
-To train nanoVLM, you can simply use the provided training script. After training, your model gets uploaded to the Hub!
-```bash
-wandb login --relogin
-huggingface-cli login
-python train.py
-```
-which will use the default `models/config.py`.
-
-## Generate
-
-To try a [trained model](https://huggingface.co/lusxvr/nanoVLM-222M), you can simply use the provided generate script
-```bash
-python generate.py
-```
-or, to use distributed data parallel with 8 gpus, you can simply run:
-```bash
-torchrun --nproc_per_node=8 train.py
-```
-
-If we feed the example image in `assets/image.png` with a question into the model, we get the following output. Even after only short training, the model can recognize the cat in the picture. 
-```
-Input: 
-Image + 'What is this?'
-
-Outputs:
-Generation 1:  This is a cat sitting on the ground. I think this is a cat sitting on the ground.
-Generation 2:  This picture is clicked outside. In the center there is a brown color cat seems to be sitting on
-Generation 3:  This is a cat sitting on the ground, which is of white and brown in color. This cat
-Generation 4:  This is a cat sitting on the ground. I think this is a cat sitting on the ground.
-Generation 5:  This is a cat sitting on the ground, which is covered with a mat. I think this is
-```
-
-## Hub integration
-
-**nanoVLM** comes with handy methods to load and save the model from the Hugging Face Hub.
-
-### Pretrained weights
-
-Here is how to load from a repo on the Hugging Face Hub. This is the recommended way to start working with the pretrained weights.
-
-```python
-# Load pretrained weights from Hub
-from models.vision_language_model import VisionLanguageModel
-
-model = VisionLanguageModel.from_pretrained("lusxvr/nanoVLM-222M")
-```
-
-### Push to hub
-
-Once you've trained a **nanoVLM** model, you might want to share it on the Hugging Face Hub. You can easily do that with:
-
-```python
-... # Load and train your model
-
-# Push it to `username/my-awesome-nanovlm-model` repo
-model.push_to_hub("my-awesome-nanovlm-model")
-```
-
-The model will be saved on the Hub as a config file `config.json` and a weights file `model.safetensors`. A modelcard `README.md` will also be generated for you with some high-level information. Feel free to update it manually to explain your work.
-
-If the repo does not exist, it will be created for you. By default the repo will be public. You can pass `private=True` if you don't want to share publicly.
-
-
-### Local save/load
-
-If you don't want to host your model on the Hugging Face Hub, it is still possible to save it locally:
-
-```python
-... # Load and train your model
-
-# Save it to a local folder
-model.save_pretrained("path/to/local/model")
-```
-
-You can then reload it from the local path:
-
-```python
-# Load pretrained weights from local path
-from models.vision_language_model import VisionLanguageModel
-
-model = VisionLanguageModel.from_pretrained("path/to/local/model")
-```
-
-## VRAM Usage
-
-Understanding the VRAM requirements for training is crucial for selecting the right hardware and batch sizes. We've benchmarked the default `nanoVLM` model (222M parameters) on a single NVIDIA H100 GPU. Below is a summary of the peak VRAM usage observed for different batch sizes during training (including model, gradients, and optimizer states):
-
-<img src="assets/VRAM_Usage_vs_Batch_Size_nanoVLM.png" width="600" alt="VRAM Usage vs Batch Size">
-
-Here's a breakdown of the approximate peak VRAM usage:
-
-```
-VRAM allocated after loading model to device: 870.53 MB
---- Summary of VRAM Usage (Default Model) ---
-Batch Size 1:   4439.02 MB
-Batch Size 2:   4461.05 MB
-Batch Size 4:   4515.27 MB
-Batch Size 8:   5062.60 MB
-Batch Size 16:  6989.32 MB
-Batch Size 32:  10880.09 MB
-Batch Size 64:  18584.00 MB
-Batch Size 128: 34043.34 MB
-Batch Size 256: 64944.37 MB
-Batch Size 512: OOM (Peak before OOM: 80228.30 MB)
-```
-
-**Key Takeaways:**
-- You'll need at least ~4.5 GB of VRAM to train the default model even with a batch size of 1.
-- With approximately 8 GB of VRAM, you should be able to train with a batch size of up to 16.
-
-**Measure for Your Setup:**
-
-The values above are for the default model configuration. If you modify the model architecture (e.g., change backbones, hidden sizes) or use different sequence lengths, your VRAM requirements will change. 
-
-We provide a script `measure_vram.py` that allows you to test VRAM requirements on your specific machine and for your chosen model configuration and batch sizes. 
-
-To use it:
-1. Ensure you have a CUDA-enabled GPU and PyTorch installed.
-2. Run the script with your desired batch sizes. You can also specify a model checkpoint if you have one, or let it initialize a new model based on the default `VLMConfig`.
-
-```bash
-# Example: Test batch sizes 1, 2, 4, 8 with a new default model
-python measure_vram.py --batch_sizes "1 2 4 8"
-
-# Example: Test with a specific checkpoint and different batch sizes
-python measure_vram.py --vlm_checkpoint_path path/to/your/model.pth --batch_sizes "16 32 64"
-
-```
-
-This script will output the peak VRAM allocated for each batch size tested, helping you determine feasible training configurations for your hardware.
-
-
-## Contributing
-
-We welcome contributions to nanoVLM! However, to maintain the repository's focus on simplicity and pure PyTorch, we have a few guidelines:
-
-*   **Pure PyTorch:** We aim to keep nanoVLM as a lightweight implementation in pure PyTorch. Contributions that introduce dependencies like `transformers.Trainer`, `accelerate`, or `deepspeed` will not be accepted.
-*   **New Features:** If you have an idea for a new feature, please open an issue first to discuss the scope and implementation details. This helps ensure that your contribution aligns with the project's goals.
-*   **Bug Fixes:** Feel free to submit pull requests for bug fixes.
-
-### Roadmap
-
-Here are some areas we're looking to work on in the near future. Contributions in these areas are particularly welcome:
-
-*   **Evaluations:** Implementing more evaluations or improving our MMStar implementation (highly valued)
-*   **Data Packing:** Implementing a way to create packs of a given size from the input data to optimize training.
-*   **Multi-gpu training:** Training on several GPUs
-*   **Multi-image support:** Training with several images
-*   **Image-splitting:** Enabling higher resolutions through image-splitting as done in SmolVLM.
-*   **VLMEvalKit:** Integration into [VLMEvalKit](https://github.com/open-compass/VLMEvalKit) to enable further benchmarks
-
-## Citation
-
-If you like the project and want to use it somewhere, please use this citation:
-```
-@misc{wiedmann2025nanovlm,
-  author = {Luis Wiedmann and Aritra Roy Gosthipaty and Andrés Marafioti},
-  title = {nanoVLM},
-  year = {2025},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/huggingface/nanoVLM}}
-}
-```
+**nanoVLM**로 간단하면서도 강력한 Zero-shot Object Detection을 경험해보세요! 🎯✨

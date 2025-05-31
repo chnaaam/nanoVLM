@@ -39,6 +39,15 @@ class VLMConfig:
     vlm_load_backbone_weights: bool = True
     vlm_checkpoint_path: str = 'checkpoints'
     hf_repo_name: str = 'nanoVLM'
+    
+    # Object Detection 관련 설정들
+    detection_num_classes: int = 80  # COCO 클래스 수
+    detection_num_anchors: int = 3   # YOLO 스타일 앵커 수
+    detection_grid_sizes: tuple = (7, 14, 28)  # 다중 스케일 grid 크기
+    detection_conf_threshold: float = 0.5
+    detection_nms_threshold: float = 0.4
+    detection_max_detections: int = 100
+    detection_use_language_grounding: bool = True  # 텍스트 프롬프트 기반 detection
 
 
 @dataclass
@@ -56,8 +65,9 @@ class TrainConfig:
     epochs: int = 5
     compile: bool = False
     resume_from_vlm_checkpoint: bool = False # Indicate if the training should be resumed from a checkpoint of the whole VLM or you want to start from scratch
-    train_dataset_path: str = 'HuggingFaceM4/the_cauldron'
-    train_dataset_name: tuple[str, ...] = ("ai2d", "aokvqa", "chart2text", "chartqa", "clevr", "cocoqa", "datikz", "diagram_image_to_text", "docvqa", "dvqa", "figureqa", "finqa", "geomverse", "hateful_memes", "hitab", "iam", "iconqa", "infographic_vqa", "intergps", "localized_narratives", "mapqa", "multihiertt", "ocrvqa", "plotqa", "raven", "rendered_text", "robut_sqa", "robut_wikisql", "robut_wtq", "scienceqa", "screen2words", "st_vqa", "tabmwp", "tallyqa", "tat_qa", "textcaps", "textvqa", "tqa", "vistext", "visual7w", "visualmrc", "vqarad", "vqav2", "vsr", "websight")
-    test_dataset_path: str = "Lin-Chen/MMStar"
+    train_dataset_path: str = 'jp1924/VisualQuestionAnswering'
+    train_dataset_name: tuple[str, ...] = ("train",)
+    test_dataset_path: str = "jp1924/VisualQuestionAnswering"
+    test_dataset_name: tuple[str, ...] = ("test",)
     wandb_entity: str = "HuggingFace" # Indicate the entity to log to in wandb
     log_wandb: bool = True

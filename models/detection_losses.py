@@ -74,29 +74,27 @@ class YOLOLoss(nn.Module):
                 
                 coord_loss = xy_loss + wh_loss
             
-            # 2. Objectness Loss
-            pred_conf_sigmoid = torch.sigmoid(pred_conf)
-            
-            # Object confidence loss
-            obj_conf_loss = F.binary_cross_entropy(
-                pred_conf_sigmoid[obj_mask],
+            # 2. Objectness Loss (autocast 안전한 버전)
+            # Object confidence loss - sigmoid + BCE를 합친 버전 사용
+            obj_conf_loss = F.binary_cross_entropy_with_logits(
+                pred_conf[obj_mask],
                 target_conf[obj_mask],
                 reduction='sum'
             ) if obj_mask.any() else 0.0
             
-            # No-object confidence loss
-            noobj_conf_loss = F.binary_cross_entropy(
-                pred_conf_sigmoid[noobj_mask],
+            # No-object confidence loss - sigmoid + BCE를 합친 버전 사용
+            noobj_conf_loss = F.binary_cross_entropy_with_logits(
+                pred_conf[noobj_mask],
                 target_conf[noobj_mask],
                 reduction='sum'
             ) if noobj_mask.any() else 0.0
             
-            # 3. Classification Loss (only for cells with objects)
+            # 3. Classification Loss (only for cells with objects) - autocast 안전한 버전
             class_loss = 0.0
             if obj_mask.any():
-                pred_classes_sigmoid = torch.sigmoid(pred_classes)
-                class_loss = F.binary_cross_entropy(
-                    pred_classes_sigmoid[obj_mask],
+                # sigmoid + BCE를 합친 버전 사용
+                class_loss = F.binary_cross_entropy_with_logits(
+                    pred_classes[obj_mask],
                     target_classes[obj_mask],
                     reduction='sum'
                 )
@@ -126,7 +124,7 @@ class YOLOLoss(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    """Focal Loss for addressing class imbalance"""
+    """Focal Loss for addressing class imbalance (autocast 안전한 버전)"""
     
     def __init__(self, alpha: float = 1.0, gamma: float = 2.0, reduction: str = 'mean'):
         super().__init__()
@@ -137,17 +135,18 @@ class FocalLoss(nn.Module):
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            inputs: Predictions [N, C] 
+            inputs: Predictions [N, C] (logits, sigmoid 적용 전)
             targets: Ground truth [N, C] (one-hot encoded)
         """
-        # Apply sigmoid to get probabilities
-        p = torch.sigmoid(inputs)
+        # autocast 안전한 버전 사용
+        bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
         
-        # Focal loss formula
+        # Focal weight 계산을 위해 sigmoid 적용
+        p = torch.sigmoid(inputs)
         focal_weight = self.alpha * (1 - p) ** self.gamma
-        loss = focal_weight * F.binary_cross_entropy_with_logits(
-            inputs, targets, reduction='none'
-        )
+        
+        # Focal loss 적용
+        loss = focal_weight * bce_loss
         
         if self.reduction == 'mean':
             return loss.mean()

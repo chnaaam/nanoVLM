@@ -662,8 +662,8 @@ def main():
     train_cfg = TrainConfig()
     
     # Detection 학습에 적합한 설정으로 조정
-    train_cfg.batch_size = 8  # 메모리 효율성을 위해 작은 배치 크기 사용
-    train_cfg.epochs = 10
+    train_cfg.batch_size = 256  # 메모리 효율성을 위해 작은 배치 크기 사용
+    train_cfg.epochs = 3
     train_cfg.log_wandb = args.wandb
     
     print("🔧 설정 정보:")

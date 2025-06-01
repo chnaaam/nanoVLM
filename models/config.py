@@ -47,7 +47,7 @@ class TrainConfig:
     lr_backbones: float = 1e-4
     data_cutoff_idx: int = None
     val_ratio: float = 0.025
-    batch_size: int = 256
+    batch_size: int = 8
     gradient_accumulation_steps: int = 1
     mmstar_batch_size: int = 32
     max_grad_norm: float = None
@@ -56,8 +56,7 @@ class TrainConfig:
     epochs: int = 5
     compile: bool = False
     resume_from_vlm_checkpoint: bool = False # Indicate if the training should be resumed from a checkpoint of the whole VLM or you want to start from scratch
-    train_dataset_path: str = 'HuggingFaceM4/the_cauldron'
-    train_dataset_name: tuple[str, ...] = ("ai2d", "aokvqa", "chart2text", "chartqa", "clevr", "cocoqa", "datikz", "diagram_image_to_text", "docvqa", "dvqa", "figureqa", "finqa", "geomverse", "hateful_memes", "hitab", "iam", "iconqa", "infographic_vqa", "intergps", "localized_narratives", "mapqa", "multihiertt", "ocrvqa", "plotqa", "raven", "rendered_text", "robut_sqa", "robut_wikisql", "robut_wtq", "scienceqa", "screen2words", "st_vqa", "tabmwp", "tallyqa", "tat_qa", "textcaps", "textvqa", "tqa", "vistext", "visual7w", "visualmrc", "vqarad", "vqav2", "vsr", "websight")
-    test_dataset_path: str = "Lin-Chen/MMStar"
-    wandb_entity: str = "HuggingFace" # Indicate the entity to log to in wandb
+    train_dataset_path: str = 'jp1924/VisualQuestionAnswering'
+    test_dataset_path: str = "jp1924/VisualQuestionAnswering"
+    wandb_entity: str = "chnaaam" # Indicate the entity to log to in wandb
     log_wandb: bool = True

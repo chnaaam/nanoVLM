@@ -18,8 +18,8 @@ torch.manual_seed(0)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(0)
 
-from data.collators import VQACollator, MMStarCollator
-from data.datasets import MMStarDataset, VQADataset
+from data.collators import VQACollator
+from data.datasets import VQADataset
 from data.processors import get_image_processor, get_tokenizer
 from models.vision_language_model import VisionLanguageModel
 import models.config as config
@@ -81,9 +81,8 @@ def get_dataloaders(train_cfg, vlm_cfg):
 
     # Load and combine all training datasets
     combined_train_data = []
-    for dataset_name in train_cfg.train_dataset_name:
-        train_ds = load_dataset(train_cfg.train_dataset_path, dataset_name)
-        combined_train_data.append(train_ds['train'])
+    train_ds = load_dataset(train_cfg.train_dataset_path)
+    combined_train_data.append(train_ds['train'])
     train_ds = concatenate_datasets(combined_train_data)
     
     test_ds = load_dataset(train_cfg.test_dataset_path)
@@ -100,11 +99,11 @@ def get_dataloaders(train_cfg, vlm_cfg):
 
     train_dataset = VQADataset(train_ds.select(range(train_size)), tokenizer, image_processor)
     val_dataset = VQADataset(train_ds.select(range(train_size, total_samples)), tokenizer, image_processor)
-    test_dataset = MMStarDataset(test_ds['val'], tokenizer, image_processor)
+    test_dataset = VQADataset(test_ds['validation'], tokenizer, image_processor)
 
     # Create collators
     vqa_collator = VQACollator(tokenizer, vlm_cfg.lm_max_length)
-    mmstar_collator = MMStarCollator(tokenizer)
+    mmstar_collator = VQACollator(tokenizer, vlm_cfg.lm_max_length)
 
     g = torch.Generator()
     g.manual_seed(0)
@@ -208,15 +207,15 @@ def train(train_cfg, vlm_cfg):
         run_name = get_run_name(train_cfg, vlm_cfg)
         if train_cfg.data_cutoff_idx is None:
             run_name = run_name.replace("full_ds", f"{total_dataset_size}samples")
-        run = wandb.init(
-            entity=train_cfg.wandb_entity,
-            project="nanoVLM",
-            config={
-                "VLMConfig": asdict(vlm_cfg),
-                "TrainConfig": asdict(train_cfg)
-            },
-            name=run_name,
-        )
+        # run = wandb.init(
+        #     entity=train_cfg.wandb_entity,
+        #     project="nanoVLM",
+        #     config={
+        #         "VLMConfig": asdict(vlm_cfg),
+        #         "TrainConfig": asdict(train_cfg)
+        #     },
+        #     name=run_name,
+        # )
 
     # Initialize model
     if train_cfg.resume_from_vlm_checkpoint:
@@ -348,8 +347,8 @@ def train(train_cfg, vlm_cfg):
                         total_val_loss += loss.item()
                     avg_val_loss = total_val_loss / len(val_loader)
                     avg_val_loss = mean(dist_gather(avg_val_loss)) if is_dist() else avg_val_loss
-                    if train_cfg.log_wandb and is_master():
-                        run.log({"val_loss": avg_val_loss}, step=global_step)
+                    # if train_cfg.log_wandb and is_master():
+                        # run.log({"val_loss": avg_val_loss}, step=global_step)
 
                     if is_master() and global_step % (train_cfg.eval_interval*2) == 0:
                         eval_model = model.module if is_dist() else model  # unwrap the model for eval if DDP
@@ -357,20 +356,20 @@ def train(train_cfg, vlm_cfg):
                         if epoch_accuracy > best_accuracy:
                             best_accuracy = epoch_accuracy
                             eval_model.save_pretrained(save_directory=os.path.join(vlm_cfg.vlm_checkpoint_path, run_name))
-                        if train_cfg.log_wandb and is_master():    
-                            run.log({"accuracy": epoch_accuracy}, step=global_step)
+                        # if train_cfg.log_wandb and is_master():    
+                        #     run.log({"accuracy": epoch_accuracy}, step=global_step)
                         print(f"Step: {global_step}, Loss: {batch_loss:.4f}, Tokens/s: {tokens_per_second:.2f}, Accuracy: {epoch_accuracy:.4f}")
                     elif is_master() and not global_step % (train_cfg.eval_interval*4) == 0:
                         print(f"Step: {global_step}, Loss: {batch_loss:.4f}, Tokens/s: {tokens_per_second:.2f}")
 
                 model.train()          
 
-            if train_cfg.log_wandb and is_master():
-                run.log({
-                    "batch_loss": batch_loss,
-                    "tokens_per_second": tokens_per_second,
-                    **({"grad_norm": grad_norm} if train_cfg.max_grad_norm is not None else {})
-                }, step=global_step)
+            # if train_cfg.log_wandb and is_master():
+            #     run.log({
+            #         "batch_loss": batch_loss,
+            #         "tokens_per_second": tokens_per_second,
+            #         **({"grad_norm": grad_norm} if train_cfg.max_grad_norm is not None else {})
+            #     }, step=global_step)
                 
             if (i + 1) % train_cfg.gradient_accumulation_steps == 0 or i + 1 == len(train_loader):
                 global_step += 1
@@ -388,10 +387,10 @@ def train(train_cfg, vlm_cfg):
         epoch_tokens_per_second = total_tokens_processed / epoch_duration
 
         if is_master():
-            if train_cfg.log_wandb:
-                run.log({"epoch_loss": avg_train_loss,
-                         "epoch_duration": epoch_duration,
-                         "epoch_tokens_per_second": epoch_tokens_per_second})
+            # if train_cfg.log_wandb:
+            #     run.log({"epoch_loss": avg_train_loss,
+            #              "epoch_duration": epoch_duration,
+            #              "epoch_tokens_per_second": epoch_tokens_per_second})
 
             print(f"Epoch {epoch+1}/{train_cfg.epochs}, Train Loss: {avg_train_loss:.4f} | Time: {epoch_duration:.2f}s | T/s: {epoch_tokens_per_second:.2f}")
 
@@ -410,11 +409,11 @@ def train(train_cfg, vlm_cfg):
             hf_model = VisionLanguageModel.from_pretrained(os.path.join(vlm_cfg.vlm_checkpoint_path, run_name))
             hf_model.push_to_hub(vlm_cfg.hf_repo_name)
 
-        if train_cfg.log_wandb:
-            run.summary["avg_epoch_time"] = avg_epoch_time
-            run.summary["avg_time_per_sample"] = avg_time_per_sample
-            run.summary["mmstar_acc"] = best_accuracy
-            run.finish()
+        # if train_cfg.log_wandb:
+        #     run.summary["avg_epoch_time"] = avg_epoch_time
+        #     run.summary["avg_time_per_sample"] = avg_time_per_sample
+        #     run.summary["mmstar_acc"] = best_accuracy
+        #     run.finish()
 
 def main():
     parser = argparse.ArgumentParser()

@@ -72,35 +72,3 @@ class VQACollator(object):  # Visual Question Answering Collator
             "labels": labels
         }
 
-class MMStarCollator(object):  # https://huggingface.co/datasets/Lin-Chen/MMStar
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
-    
-    def __call__(self, batch):
-        images = [item["image"] for item in batch]
-        questions = [item["text_data"] for item in batch]
-        answers = [item["answer"] for item in batch]
-
-        # Stack images
-        images = torch.stack(images)
-        
-        encoded_question_sequences = self.tokenizer.batch_encode_plus(
-            questions,
-            padding=True,
-            padding_side="left",
-            return_tensors="pt"
-        )
-
-        encoded_answer_sequences = self.tokenizer.batch_encode_plus(
-            answers,
-            padding=True,
-            padding_side="left",
-            return_tensors="pt"
-        )
-        
-        return {
-            "images": images,
-            "input_ids": encoded_question_sequences['input_ids'],
-            "attention_mask": encoded_question_sequences['attention_mask'],
-            "labels": encoded_answer_sequences['input_ids'],
-        }
